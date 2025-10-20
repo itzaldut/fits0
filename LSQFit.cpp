@@ -1,110 +1,115 @@
-#include "TRandom2.h"
-#include "TGraphErrors.h"
-#include "TMath.h"
-#include "TApplication.h"
-#include "TCanvas.h"
-#include "TH2F.h"
-#include "TH1F.h"
-#include "TGClient.h"
-#include "TStyle.h"
-
-
 #include <iostream>
-using namespace std;
+#include <cmath>
+#include <TMath.h>
+#include <TRandom3.h>
+#include <TH1D.h>
+#include <TCanvas.h>
+#include <TFile.h>
+#include <TGraphErrors.h>
+#include <TF1.h>
 
-using TMath::Log;
+const int npoints = 12;
+const int NE = 2000;
+const double xmin = 1.0;
+const double xmax = 20.0;
+const double true_a = 0.5;
+const double true_b = 1.3;
+const double true_c = 0.5;
+const double sigma = 0.2;
+const int ndf = npoints - 3;
 
-//parms
-const double xmin=1;
-const double xmax=20;
-const int npoints=12;
-const double sigma=0.2;
+TF1* model = nullptr;
+TH1D *hA = nullptr, *hB = nullptr, *hC = nullptr, *hChi2 = nullptr;
 
-double f(double x){
-  const double a=0.5;
-  const double b=1.3;
-  const double c=0.5;
-  return a+b*Log(x)+c*Log(x)*Log(x);
+void fitPseudoExperiments()
+{
+    TRandom3 rand;
+    double x[npoints], y[npoints], ey[npoints];
+    double a_vals[NE], b_vals[NE], c_vals[NE], chi2_vals[NE];
+
+    for (int ie = 0; ie < NE; ++ie)
+    {
+        // Generate x values
+        for (int i = 0; i < npoints; ++i)
+            x[i] = xmin + (xmax - xmin) * i / (npoints - 1);
+
+        // Generate y values with noise
+        for (int i = 0; i < npoints; ++i)
+        {
+            y[i] = true_a + true_b * TMath::Log(x[i]) + true_c * TMath::Power(TMath::Log(x[i]), 2) + rand.Gaus(0, sigma);
+            ey[i] = sigma;
+        }
+
+        // Create TGraphErrors
+        TGraphErrors* gr = new TGraphErrors(npoints, x, y, nullptr, ey);
+
+        // Fit the model
+        model = new TF1("model", "[0] + [1]*log(x) + [2]*pow(log(x),2)", xmin, xmax);
+        gr->Fit(model, "Q");
+
+        // Store fit parameters
+        a_vals[ie] = model->GetParameter(0);
+        b_vals[ie] = model->GetParameter(1);
+        c_vals[ie] = model->GetParameter(2);
+
+        // Calculate chi2
+        chi2_vals[ie] = model->GetChisquare();
+
+        // Fill histograms
+        hA->Fill(a_vals[ie]);
+        hB->Fill(b_vals[ie]);
+        hC->Fill(c_vals[ie]);
+        hChi2->Fill(chi2_vals[ie]);
+
+        delete gr;
+    }
+
+    // Print summary statistics
+    std::cout << "a: mean = " << hA->GetMean() << ", std = " << hA->GetStdDev() << std::endl;
+    std::cout << "b: mean = " << hB->GetMean() << ", std = " << hB->GetStdDev() << std::endl;
+    std::cout << "c: mean = " << hC->GetMean() << ", std = " << hC->GetStdDev() << std::endl;
+    std::cout << "Chi2: mean = " << hChi2->GetMean() << ", std = " << hChi2->GetStdDev()
+              << ", expected mean ≈ " << ndf << ", expected std ≈ " << std::sqrt(2 * ndf) << std::endl;
 }
 
-void getX(double *x){
-  double step=(xmax-xmin)/npoints;
-  for (int i=0; i<npoints; i++){
-    x[i]=xmin+i*step;
-  }
+void createHistograms()
+{
+    hA = new TH1D("hA", "Distribution of a values", 50, 0.4, 0.6);
+    hB = new TH1D("hB", "Distribution of b values", 50, 1.2, 1.4);
+    hC = new TH1D("hC", "Distribution of c values", 50, 0.4, 0.6);
+    hChi2 = new TH1D("hChi2", "Distribution of Chi2 values", 50, 0, 50);
 }
 
-void getY(const double *x, double *y, double *ey){
-  static TRandom2 tr(0);
-  for (int i=0; i<npoints; i++){
-    y[i]=f(x[i])+tr.Gaus(0,sigma);
-    ey[i]=sigma;
-  }
+void plotHistograms()
+{
+    TCanvas* c1 = new TCanvas("c1", "Fitted Parameters", 800, 600);
+    c1->Divide(2, 2);
+
+    c1->cd(1);
+    hA->Draw();
+    c1->cd(2);
+    hB->Draw();
+    c1->cd(3);
+    hC->Draw();
+    c1->cd(4);
+    hChi2->Draw();
+
+    c1->Update();
 }
 
+int main()
+{
+    createHistograms();
+    fitPseudoExperiments();
+    plotHistograms();
 
-void leastsq(){
-  double x[npoints];
-  double y[npoints];
-  double ey[npoints];
-  getX(x);
-  getY(x,y,ey);
-  auto tg = new TGraphErrors(npoints,x,y,0,ey);
-  tg->Draw("alp");
+    // Clean up
+    delete hA;
+    delete hB;
+    delete hC;
+    delete hChi2;
+    delete model;
+
+    return 0;
 }
 
-int main(int argc, char **argv){
-  TApplication theApp("App", &argc, argv); // init ROOT App for displays
-
-  // ******************************************************************************
-  // ** this block is useful for supporting both high and std resolution screens **
-  UInt_t dh = gClient->GetDisplayHeight()/2;   // fix plot to 1/2 screen height  
-  //UInt_t dw = gClient->GetDisplayWidth();
-  UInt_t dw = 1.1*dh;
-  // ******************************************************************************
-
-  gStyle->SetOptStat(0); // turn off histogram stats box
-
-
-  TCanvas *tc = new TCanvas("c1","Sample dataset",dw,dh);
-
-  double lx[npoints];
-  double ly[npoints];
-  double ley[npoints];
-
-  getX(lx);
-  getY(lx,ly,ley);
-  auto tgl = new TGraphErrors(npoints,lx,ly,0,ley);
-  tgl->SetTitle("Pseudoexperiment;x;y");
-  
-  // An example of one pseudo experiment
-  tgl->Draw("alp");
-  tc->Draw();
-
-
-  
-  // *** modify and add your code here ***
-
-  TH2F *h1 = new TH2F("h1","Parameter b vs a;a;b",100,0,1,100,0,1);
-  TH2F *h2 = new TH2F("h2","Parameter c vs a;a;c",100,0,1,100,0,1);
-  TH2F *h3 = new TH2F("h3","Parameter c vs b;b;c",100,0,1,100,0,1);
-  TH1F *h4 = new TH1F("h4","reduced chi^2;;frequency",100,0,1);
-
-  // perform many least squares fits on different pseudo experiments here
-  // fill histograms w/ required data
-  
-  TCanvas *tc2 = new TCanvas("c2","my study results",200,200,dw,dh);
-  tc2->Divide(2,2);
-  tc2->cd(1); h1->Draw("colz");
-  tc2->cd(2); h2->Draw("colz");
-  tc2->cd(3); h3->Draw("colz");
-  tc2->cd(4); h4->Draw();
-  
-  tc2->Draw();
-
-  // **************************************
-  
-  cout << "Press ^c to exit" << endl;
-  theApp.SetIdleTimer(30,".q");  // set up a failsafe timer to end the program  
-  theApp.Run();
-}

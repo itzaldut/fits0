@@ -10,8 +10,8 @@ true_c = 0.5
 
 xmin = 1.0
 xmax = 20.0
-npoints = 12        # you can vary this
-sigma = 0.2         # the uncertainty size (all points have same uncertainty)
+npoints = 12        
+sigma = 0.2         
 NE = 2000           # number of pseudo‑experiments to run
 
 # define model function
@@ -50,7 +50,7 @@ for ie in range(NE):
     red_chi2_vals[ie] = chi2 / ndf
 
 # Create the PDF and save plots
-with PdfPages('LSQfit_py.pdf') as pdf:
+with PdfPages('LSQFit.pdf') as pdf:
 
     # --- First panel: histograms of a, b, c, chi² ---
     fig1, axes1 = plt.subplots(2,2, figsize=(10,8))
@@ -102,5 +102,5 @@ with PdfPages('LSQfit_py.pdf') as pdf:
     pdf.savefig(fig2)
     plt.close(fig2)
 
-print("Saved plots to LSQfit_py.pdf")
+print("Saved plots to LSQFit.pdf")
 
